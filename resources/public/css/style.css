@@ -1,0 +1,20 @@
+/* some style */
+.login-box {
+    position: absolute;
+    background: #6c757d;
+    color: white;
+    border-radius:7px;
+    top:40px;
+    padding: 10px;
+    filter: blur(0px);
+}
+.blur {
+    filter: blur(2px);
+}
+.noblur{
+    filter: blur(0px);
+}
+.toolbar{
+    background: #333333;
+    padding:10px;
+}
