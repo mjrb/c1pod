@@ -20,8 +20,8 @@
    "auth is generated mygpo/auth, see request for more info on endpoint"
   (auth-request auth "GET" endpoint))
 
-(defn getw [endpoint]
-  "get withought auth. endpoints off https://www.gpodder.net"
+(defn noauth-get [endpoint]
+  "get without auth. endpoints off https://www.gpodder.net"
   (http/get (str "https://www.gpodder.net" endpoint)
             {:with-credentials? false}))
 
@@ -34,7 +34,7 @@
    (auth-request auth "POST" endpoint)))
 
 (defn check-login
-  "does a request to see if login is valid returns boolean channel if its valid"
+  "does a request to see if login is valid returns boolean channel"
   ([uname pass]
    (let [ok? (chan)
          auth (gen-auth uname pass)]
