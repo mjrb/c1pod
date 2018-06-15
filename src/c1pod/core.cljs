@@ -8,9 +8,6 @@
 
 (enable-console-print!)
 
-(defn login [uname pass]
-  (js/alert "not yet implemented"))
-
 (defn login-box []
   (let [box-width 300]
     [:div.login-box {:style {:left (/ (- (.-innerWidth js/window) box-width) 2)
@@ -21,58 +18,53 @@
                   [:input.form-control {:type "password" :id "pass"}])
      [:span.btn-group
       [:input.btn.btn-primary {:type "button" :value "login"
-                               :on-click #(login (utils/feild-value "uname")
-                                                 (utils/feild-value "pass"))}]
+                               :on-click #(state/login! (utils/feild-value "uname")
+                                                        (utils/feild-value "pass"))}]
       [:input.btn.btn-primary
        {:value "forgot password?" :type "button"
         :on-click #(js/alert "not yet implemented")}]
       [:input.btn.btn-danger
        {:value "cancel" :type "button"
-        :on-click #(swap! state/app assoc :show-login-box? false)
-        }]]]))
+        :on-click state/close-logout!}]]
+     (if-not (empty? (@state/app :login-err))
+       [:div.login-err.alert-danger.alert (@state/app :login-err)]
+       [:div])]
+  ))
 
 (defn podcast-list-item [data]
-  ;(print data)
-  [:li.list-group-item [:img {:src (:scaled_logo_url data)}](:title data)])
+  [:li.list-group-item
+   [:img {:src (:scaled_logo_url data)}]
+   (:title data)])
 
-(defn toplist [number]
-  (let [list-data (atom [1 2 3])
-        ]
-    
-    (reagent/create-class
-     {:display-name "toplist"
-      :component-will-mount
-      #(go (let [response (<! (mygpo/getw (str "/toplist/" number ".json")))]
-             (reset! list-data (response :body))
-             (print "sus")
-             ))
-      :reagent-render
-      #(into [:ul.list-group]
-             (map (fn [data] [podcast-list-item data]) @list-data))
-      })))
+(defn search-result [title podcasts]
+  (if (empty? podcasts)
+    [:em "Loading ..."]
+    (into [:ul.list-group
+           [:li.list-group-item [:h2 title]]]
+          (map (fn [data] [podcast-list-item data])
+               podcasts))))
 
 (defn toolbar []
   [:span.btn-group.container-fluid.toolbar
    [:input.btn.btn-secondary {:type "button" :value "c1pod"}]
-   [:input.form-control {:type "text" :placeholder "search"}]
-   [:input.btn.btn-primary {:type "button" :value "login"
-                            :on-click #(swap! state/app assoc
-                                              :show-login-box? true)}]])
-(utils/set-content! [:div
-                     [:h1 "this is some example content"]
-                     [:p "text"]
-                     [toplist 30]
-                     ])
+   [:input.form-control {:type "text" :placeholder "search" :id "query"
+                         :on-change #(state/search! (utils/feild-value "query"))}]
+   (if (@state/app :logged-in?)
+     [:input.btn.btn-primary {:type "button" :value "logout"
+                              :on-click #(js/alert "not yet implemented")}]
+     [:input.btn.btn-primary {:type "button" :value "login"
+                              :on-click state/show-login!}])
+  ])
+
 (defn app []
   [:div
-   [:div {:class-name (if (@state/app :show-login-box?)
-                       "blur"
-                       "noblur")}
+   [:div {:class-name (if (@state/app :show-login-box?) "blur" "noblur")}
    [toolbar]
-   [:div.container (@state/app :content)]]
+   [:div.container [search-result (@state/app :title) (@state/app :search-result)]]]
    (if (@state/app :show-login-box?)
      [login-box state/app])])
 
+(state/search-top-podcasts!)
 (reagent/render-component [app]
                           (. js/document (getElementById "app")))
 (defn on-js-reload [])
