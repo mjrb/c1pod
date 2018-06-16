@@ -14,11 +14,44 @@
 .noblur{
     filter: blur(0px);
 }
-.toolbar{
+.searchbar{
     background: #333333;
     padding: 10px;
     margin-bottom: 20px;
 }
+.toolbar{
+    padding-bottom: 24px;
+}
 .login-err{
     margin-top: 10px;
+}
+.invisible{
+    display: none;
+}
+.tagbar{
+    display: flex;
+    direction: row;
+    justify-content:center;
+    flex-wrap: wrap;
+}
+.nowrap{
+   white-space: nowrap;
+}
+.tag-component{
+    margin-left: 5px;
+    background: rgb(209,236,241);
+    border-color: rgb(190,229,235);
+    color: rgb(12,84,96);
+    padding: 8px;
+    border-radius: 3px;
+    margin-bottom: 30px;
+}
+.thumbnail{
+    height:100px;
+    width:100px;
+}
+.auth-buttons{
+    display:flex;
+    direction:row;
+    flex-wrap:nowrap;
 }
