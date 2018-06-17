@@ -1,7 +1,7 @@
 (ns c1pod.core  
   (:require [reagent.core :as reagent :refer [atom]]
             [cljs-http.client :as http]
-            [cljs.core.async :refer [<! go go-loop]]
+            [cljs.core.async :refer [<! go go-loop timeout]]
             [c1pod.mygpo :as mygpo]
             [c1pod.state :as state]
             [c1pod.utils :as utils]))
@@ -34,18 +34,20 @@
 
 (defn podcast-list-item [data]
   [:li.list-group-item
-   [:img.thumbnail {:src (:scaled_logo_url data)}]
-   (:title data)])
+   [:a {:href (data :mygpo_link)}
+    [:img.thumbnail {:src (:scaled_logo_url data)}]
+    (:title data)]])
 
 (defn tag-component [tag selected]
   [:span.tag-component.nowrap (str ":" (tag :tag) " ") [:b (tag :usage)]
    (if selected
-     [:span "x"])
-   ])
+     [:span "x"])])
 
 (defn search-result [title podcasts]
   (if (empty? podcasts)
-    [:em "Loading ..."]
+    (if-not (empty? @state/loading)
+      [:em "Loading ..."]
+      [:b "No results found :( Maybe try rephrasing what your looking for..."])
     (into [:ul.list-group
            [:li.list-group-item [:h2 title]]]
           (map (fn [data] [podcast-list-item data])
@@ -99,11 +101,7 @@
 
 (state/search-top-podcasts!)
 (state/fetch-tags!)
+(state/fetch-stopwords!)
 (reagent/render-component [app]
                           (. js/document (getElementById "app")))
 (defn on-js-reload [])
-
-(go (let [result (<! (mygpo/search "m"))]
-      (print (map #(% :subscribers) result))
-      (print (count result))))
-
