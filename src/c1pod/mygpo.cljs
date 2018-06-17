@@ -2,6 +2,8 @@
   (:refer-clojure :exclude [get])
   (:require [cljs-http.client :as http]
             [cljs.core.async :refer [<! go >! chan pipe]]))
+(defonce api-root "https://www.gpodder.net")
+(defonce proxy-root "https://mjwintersphp.000webhostapp.com")
 
 (defn gen-auth [uname pass]
   "generate base64 auth string for Authentication: Basic header"
@@ -10,7 +12,7 @@
 (defn auth-request [auth method endpoint]
   "request function for any method endpoint should start with /
   and should correspond to the gpodder docs"
-  (http/post "https://mjwintersphp.000webhostapp.com/mygpo.php"
+  (http/post (str proxy-root "/mygpo.php")
              {:with-credentials? false
               :form-params {:auth auth
                             :method method
@@ -22,16 +24,12 @@
 
 (defn noauth-get [endpoint]
   "get without auth. endpoints off https://www.gpodder.net"
-  (http/get (str "https://www.gpodder.net" endpoint)
+  (http/get (str api-root endpoint)
             {:with-credentials? false}))
 
-(defn post
-  ([auth endpoint]
+(defn post [auth endpoint]
    "auth is generated mygpo/auth, see request for more info on endpoint"
    (auth-request auth "POST" endpoint))
-  ([auth endpoint data]
-   "also sends data for post request"
-   (auth-request auth "POST" endpoint)))
 
 (defn check-login
   "does a request to see if login is valid returns boolean channel"
@@ -55,8 +53,7 @@
     (go (let [response (<! request-chan)]
           (>! result (if (= (response :status) 200)
                        (response :body)
-                       (throw (js/Error (str "failed to get resource: "
-                                             (response :status))))
+                       (response :status)
                        ))))
     result))
 
@@ -70,3 +67,8 @@
 
 (defn search [query]
   (get-array (noauth-get (str "/search.json?q=" query))))
+
+(defn get-stoplist []
+  "retrieves list of postgres stopwords"
+  (http/get (str proxy-root "/english.stop")
+            {:with-credentials? false}))
