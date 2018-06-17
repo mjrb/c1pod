@@ -22,6 +22,17 @@
                     :relevant-tags []
                     :selected-tags []
                     }))
+
+;;this makes sure that all the requests are done loading before
+;;the app says it cant find anything. each request conjoins on its query
+;;its loading and disjoints it when its done. (hash-set)
+(defonce loading (atom #{}))
+(defn set-loading! [query]
+  (swap! loading conj query))
+
+(defn done-loading! [query]
+  (swap! loading disj query))
+
 ;;login events
 (defn set-auth! [uname pass]
   "set http basicauth string for use with api, creates base64 of username:password"
@@ -48,6 +59,7 @@
 (defn show-login! []
   (swap! app assoc
          :show-login-box? true))
+
 (defn logout! []
   (swap! app assoc
          :login-err ""
@@ -56,7 +68,6 @@
          :username "" :password ""))
 
 ;;search events
-
 (defn search-titles [query coll]
   (filter
    (fn [item]
@@ -75,21 +86,24 @@
                 result))))
     result-chan
     ))
+
 (defn query-podcasts! [query]
+  (set-loading! query)
   (go (let [result (search-titles query (@app :toplist))]
-        (swap! app assoc
-               :search-result
-               (if (> (count result) 10)
-                 result
-                 (concat result (<! (mygpo-search-memo query))))
-               :relevant-tags
-               (take 5 (search-titles query (@app :tags)))
-               )
-        (print (@app :relevant-tags))
-        )))
+          (if (= query (@app :query))
+            (swap! app assoc
+                   :search-result
+                   (distinct (if (> (count result) 10)
+                               result
+                               (concat result (<! (mygpo-search-memo query)))))
+                   :relevant-tags
+                   (take 5 (search-titles query (@app :tags))))
+                ))
+          (done-loading! query)))
 
 (defn search-top-podcasts! []
   "change app state to search top podcasts"
+  (set-loading! "")
   ;;toplist has a max of 100
   (go (let [toplist (<! (mygpo/toplist 100))]
         (swap! app assoc
@@ -97,7 +111,10 @@
                :toplist toplist
                :search-result toplist
                :query-function query-podcasts!)
+        ;;done loading
+        (done-loading! "")
         )))
+
 (defn fetch-tags! []
   (go (swap! app assoc :tags
              (->> (utils/maximize 200 mygpo/get-tags)
@@ -106,5 +123,7 @@
                  (reverse)))))
 
 (defn search! [query]
-  "search the current stash for the query"
+  (str "search the current stash for the query. this "
+       "allows us to change the query behavior on the fly")
+  (swap! app assoc :query query)
   ((@app :query-function) query))
