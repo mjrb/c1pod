@@ -30,6 +30,7 @@
   (try
     (some? (re-find (re-pattern (str "(?i)" string)) other))
     (catch js/Error e )))
+
 (defn maximize [start func]
   (str "used to get the max resources from a network request"
        "given an initial amount, and a function that tames an amount and"
@@ -43,3 +44,6 @@
           (>! all some)
           ))))
     all))
+
+(defn distinct-by [keyfn coll]
+  (map first (vals (group-by keyfn coll))))
