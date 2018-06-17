@@ -68,7 +68,7 @@
 (defn search [query]
   (get-array (noauth-get (str "/search.json?q=" query))))
 
-(defn get-stoplist []
+(defn get-stopwords []
   "retrieves list of postgres stopwords"
-  (http/get (str proxy-root "/english.stop")
+  (http/get (str proxy-root "/english.stop.php")
             {:with-credentials? false}))
