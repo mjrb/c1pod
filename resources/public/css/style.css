@@ -1,5 +1,5 @@
 /* some style */
-.login-box {
+.popup-box {
     position: absolute;
     background: #6c757d;
     color: white;
@@ -51,7 +51,7 @@
     width:100px;
 }
 .auth-buttons{
-    display:flex;
-    direction:row;
-    flex-wrap:nowrap;
+    display: flex;
+    direction: row;
+    flex-wrap: nowrap;
 }
