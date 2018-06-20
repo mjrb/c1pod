@@ -12,7 +12,8 @@
                  [org.clojure/clojurescript "1.10.238"]
                  [org.clojure/core.async  "0.4.474"]
 		 [cljs-http "0.1.45"]
-                 [reagent "0.7.0"]]
+                 [reagent "0.7.0"]
+                 [funcool/tubax "0.2.0"]]
 
   :plugins [[lein-figwheel "0.5.16"]
             [lein-cljsbuild "1.1.7" :exclusions [[org.clojure/clojure]]]]
@@ -49,7 +50,7 @@
                 :source-paths ["src"]
                 :compiler {:output-to "resources/public/js/compiled/c1pod.js"
                            :main c1pod.core
-                           :optimizations :advanced
+                           :optimizations :simple
                            :pretty-print false}}]}
 
   :figwheel {;; :http-server-root "public" ;; default and assumes "resources"
