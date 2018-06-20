@@ -1,6 +1,6 @@
 # c1pod
 
-single page search engine for gpodder.net (c1pod)[https:mjrb.github.io/c1pod.html]
+single page search engine for gpodder.net (c1pod)[http://www.c1pod.tk]
 
 ## Overview
 
