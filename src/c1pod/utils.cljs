@@ -1,6 +1,7 @@
 (ns c1pod.utils
   (:refer-clojure :exclude [contains?])
   (:require [reagent.core :as reagent]
+            [tubax.helpers :as xmlh]
             [cljs.core.async :refer [<! go >! chan]]))
 
 (defn feild-value [id]
@@ -19,11 +20,6 @@
    [:span
     [:label label-text]
     [:br]]))
-
-;; (defn set-content! [element-vec]
-;;   (let [element (reagent/as-element element-vec)]
-;;     (print (. js/JSON stringify element))
-;;     (swap! state/app assoc :content element)))
 
 (defn contains? [string other]
   "case insensitive version of contains? with regex."
@@ -47,3 +43,31 @@
 
 (defn distinct-by [keyfn coll]
   (map first (vals (group-by keyfn coll))))
+
+(defn month-val [month]
+  (condp = month
+      "Jan" 1
+      "Feb" 2
+      "Mar" 3
+      "Apr" 4
+      "May" 5
+      "Jun" 6
+      "Jul" 7
+      "Aug" 8
+      "Sep" 9
+      "Oct" 10
+      "Nov" 11
+      "Dec" 12
+    ))
+;;D, d M Y H:i:s T
+(defn rfc822-val [date-string]
+  "turns RFC822 date into a number to compare accurate to the hour. NOT PRECISE"
+  ;;ignore weekday and timezone
+  (let [[_ day month year time _] (.split date-string " ")
+        hour (first (.split time ":"))]
+    ;;negate so largest is first
+    (- (+ (js/parseInt hour)
+          (* 24 (js/parseInt day))
+          (* 24 30 (month-val month)) ;amproximate
+          (* 24 30 365 (js/parseInt year)))
+    )))
