@@ -3,7 +3,7 @@
   (:require [cljs-http.client :as http]
             [tubax.core :as xml]
             [tubax.helpers :as xmlh]
-            [cljs.core.async :refer [<! go >! chan pipe]]))
+            [cljs.core.async :refer [<! go >! chan]]))
 (defonce api-root "http://gpodder.net")
 (defonce proxy-root "https://mjwintersphp.000webhostapp.com")
 
@@ -33,31 +33,21 @@
    "auth is generated mygpo/auth, see request for more info on endpoint"
    (auth-request auth "POST" endpoint))
 
-(defn check-login
+(defn check-login [uname pass]
   "does a request to see if login is valid returns boolean channel"
-  ([uname pass]
-   (let [ok? (chan)
-         auth (gen-auth uname pass)]
-     (go
-       (let [endpoint (str "/api/2/auth/" uname "/login.json")
-             response (<! (post auth endpoint))
-             status (response :status)]
-         (if (= status 200)
-           (>! ok? true)
-           (>! ok? false))))
-     ;;return ok? chan
-     ok?
-     )))
+  (go (let [auth (gen-auth uname pass)
+            endpoint (str "/api/2/auth/" uname "/login.json")
+            response (<! (post auth endpoint))
+            status (response :status)]
+        (= status 200))))
 
 (defn get-array [request-chan]
   "returns chanel with requested array. if not 200 it puts response code on chanel"
-  (let [result (chan)]
     (go (let [response (<! request-chan)]
-          (>! result (if (= (response :status) 200)
-                       (response :body)
-                       (response :status)
-                       ))))
-    result))
+          (if (= (response :status) 200)
+            (response :body)
+            (response :status)
+            ))))
 
 (defn get-tags [count]
   "returns chanel with tags. if not status 200 it puts response code on chanel"
@@ -87,41 +77,95 @@
   (into {} (map (fn [[key val]]
                   [(keyword key) val])
                 target-map)))
+
+(defn process-fetch-array [response]
+  "checks status and turns it into clj array of hashmap"
+  (if (= (.-status response) 200)
+    (-> (.json response)
+        (.then js->clj)
+        (.then (partial map fix-keys)))
+    (.-status response)
+    ))
+
 (defn get-tag [tag]
   (-> (js/fetch (str api-root "/api/2/tag/"
                       tag
                       "/100.json"))
-      (.then (fn [response]
-               (if (= (.-status response) 200)
-                 (-> (.json response)
-                     (.then js->clj)
-                     (.then (partial map fix-keys))
-                     )
-                 (.-status response)
-                 )))))
+      (.then process-fetch-array)))
 
+(defonce rss-memos (atom {}))
+;;we are manualy memoing to save the request data not the chanel object
+;;this alows us to sneak and precache the subfeed on login
 (defn get-podcast-rss [rss-url]
-  (let [result (chan)]
-    (go (let [ response (<! (http/get (str proxy-root "/rssget.php")
+  "rss data on a channel"
+  (go (if (contains? @rss-memos rss-url)
+        (@rss-memos rss-url)
+        (let [ response (<! (http/get (str proxy-root "/rssget.php")
                                       {:with-credentials? false
                                        :query-params {:url rss-url}}))]
-          (>! result
-              (if (= (response :status) 200)
-                (xml/xml->clj (response :body))
-                (response :status)
-                ))))
-    result))
+          (if (= (response :status) 200);
+            (try
+              (let [rss (xml/xml->clj (response :body))]
+                ;;remember the rss
+                (swap! rss-memos assoc rss-url rss)
+                rss)
+              ;;don't cache or render errors
+              ;;some rss feeds had bad formated xml
+              (catch :default e {}))
+            (response :status)
+            )))))
+
+(defn get-podcast-rss-prom [rss-url]
+  "promise containing rss data"
+  (-> (js/fetch (str proxy-root "/rssget.php?url=" rss-url))
+      (.then #(.text %))
+      (.then #(try (xml/xml->clj %) (catch :default e (print "here333"))))))
+  
+            
 
 (defn episodes [rss]
   (xmlh/find-all rss {:path [:rss :channel :item]}))
 
-(defn get-subscriptions [uname auth]
+(defn get-subscriptions [auth uname]
+  (go (let [response (<! (get auth (str "/subscriptions/" uname ".json")))]
+        (if (= (response :status) 200)
+          ;;response given as a string of json so we have to parse :(
+          (do (->> (response :body)
+                   (. js/JSON parse)
+                   (js->clj)
+                   (map fix-keys)))
+          (response :status))
+        )))
+
+(defn assoc-subscription-data [[rss subscription]]
+  (str "takes a vector pair of rss and subscription and returns a sequence with"
+       "the rss episodes with the subscription data")
+  (map (fn [episode]
+         (assoc episode :subscription subscription))
+       (episodes rss)))
+
+(defn episodes-with-subscription-data [subscriptions rss-vec]
+  (str "takes in multiple rss feeds and multiple corisponding subscriptions"
+       "and gives all of the episodes with their corrisponding subscription"
+       "for potential rendering")
+  (let [pairs (seq (zipmap rss-vec subscriptions))]
+    (flatten (map assoc-subscription-data pairs))))
+
+(defn get-subscription-episodes [auth uname]
   (let [result (chan)]
-    (go (let [response (<! (get auth (str "/subscriptions/" uname ".json")))]
-          (>! result
-              (if (= (response :status) 200)
-                (response :body)
-                (response :status)
-                ))
-          ))
+    (go (let [subscriptions (<! (get-subscriptions auth uname))]
+          (if (number? subscriptions)
+            (>! result subscriptions)
+            (let [episodes-prom (->> (map (fn [subscription]
+                        (get-podcast-rss-prom (subscription :url)))
+                      subscriptions)
+                 (. js/Promise all))]
+              (-> (.then episodes-prom (partial map episodes))
+                  (.then (partial map flatten))
+                         ;(partial episodes-with-subscription-data subscriptions))
+                  (.then (fn [episode-list]
+                           (go (>! result episode-list))))
+                  
+                  ))
+            )))
     result))
