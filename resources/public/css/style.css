@@ -8,6 +8,15 @@
     padding: 10px;
     filter: blur(0px);
 }
+.popup-box {
+    position: absolute;
+    background: #6c757d;
+    color: white;
+    border-radius: 7px;
+    top: 40px;
+    padding: 10px;
+    filter: blur(0px);
+}
 .blur {
     filter: blur(2px);
 }
@@ -54,4 +63,16 @@
     display: flex;
     direction: row;
     flex-wrap: nowrap;
+}
+#sub-tools{
+    display: flex;
+    direction: row;
+    justify-content: left;
+    flex-wrap: wrap;
+}
+#sub-tools h2{
+    margin-left: 5px;
+}
+.episode-list-buttons{
+    margin-left: 5px;
 }
