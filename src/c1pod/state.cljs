@@ -3,6 +3,7 @@
             [cljs.core.async :refer [<! >! chan]]
             [c1pod.mygpo :as mygpo]
             [c1pod.utils :as utils]
+            [tubax.helpers :as xmlh]
             [clojure.string :as str])
   (:require-macros [cljs.core.async.macros :refer [go]]))
 
@@ -26,6 +27,7 @@
                     :selected-tags #{}
                     :selected-podcast {}
                     :selected-podcast-rss nil
+                    :loading-feed false
                     :stopwords #{}
                     }))
 
@@ -39,10 +41,26 @@
 (defn done-loading! [query]
   (swap! loading disj query))
 
+(defn set-content! [content]
+  (swap! app assoc :content content))
+
 ;;login events
 (defn set-auth! [uname pass]
   "set http basicauth string for use with api, creates base64 of username:password"
   (swap! app assoc :auth (js/btoa (str uname ":" pass))))
+
+(declare fetch-subscription-feed!)
+
+(defn check-relogin! []
+  (let [uname (. js/localStorage getItem "uname")
+        auth (. js/localStorage getItem "auth")]
+    (if-not (or (empty? uname) (empty? auth))
+      (swap! app assoc
+             :logged-in? true
+             :auth auth
+             :username uname)
+      (fetch-subscription-feed!)
+      )))
 
 (defn login! [uname pass]
   (go
@@ -53,7 +71,12 @@
                  :logged-in? true
                  :blur? false
                  :username uname :password pass)
-          (set-auth! uname pass))
+          (. js/localStorage setItem "uname" uname)
+          (set-auth! uname pass)
+          ;;very bad but the authentication scheme for gpodder leaves me no choice
+          ;;other than not implementing this
+          (. js/localStorage setItem "auth" (@app :auth))
+          (go (fetch-subscription-feed!)))
       ;; if login is bad
       (swap! app assoc :login-err "login failed")
       )))
@@ -74,7 +97,10 @@
          :login-err ""
          :logged-in? false
          :auth ""
-         :username "" :password ""))
+         :username "" :password "")
+  (. js/localStorage removeItem "uname")
+  (. js/localStorage removeItem "auth")
+  )
 
 ;;search-util
 (defn search-titles [query coll]
@@ -125,74 +151,87 @@
   "memoizes mygpo/search results to avoid some network requests"
   ;;we cant use the builtin memoize because we want to memo the contents
   ;;of the channel not the chanel that the function returns
-  (let [result-chan (chan)]
-    (go (>! result-chan
-            (if (contains? @search-memos query)
-              (@search-memos query)
-              (let [result (<! (mygpo/search query))]
-                (swap! search-memos assoc query result)
-                result))))
-    result-chan
-    ))
+    (go (if (contains? @search-memos query)
+          (@search-memos query)
+          (let [result (<! (mygpo/search query))]
+            (swap! search-memos assoc query result)
+            result))))
 
 (defonce tag-search-memos (atom {}))
 (defn single-tag-search [tag]
   ;;we cant use the builtin memoize because we want to memo the contents
   ;;of the promise not the promise that the function returns
-  ;; also a i used a promise because .all is easier than doing it with
+  ;; also, i used a promise because .all is easier than doing it with
   ;; core/async. 
    (if (contains? @tag-search-memos tag)
-     (js/Promise (@tag-search-memos tag))
+     (js/Promise. (fn [resolve reject]
+                    (resolve (@tag-search-memos tag))))
      (-> (mygpo/get-tag tag)
          (.then (fn [response]
-                  (swap! search-memos assoc tag response)
+                  (swap! tag-search-memos assoc tag response)
                   response
                   )))))
 
 (defn tag-search-memo [query]
   (let [result-chan (chan)]
-    (go (let [search-result-proms (map (fn [tag]
-                                         (single-tag-search (tag :tag)))
-                                       (@app :selected-tags))
-              search-result-prom (. js/Promise all search-result-proms)]
-          (.then search-result-prom
+    (go (let [search-result-proms
+              ;;search each of the tags and resulive all the promises
+              (map (fn [tag] (single-tag-search (tag :tag)))
+                   (@app :selected-tags))
+              search-result (. js/Promise all search-result-proms)]
+          (.then search-result
                  (fn [search-result]
                    ;;flatten results and return
-                   (go (>! result-chan (search-titles query (flatten search-result))))))
+                   (go (->> (js->clj search-result)
+                            (flatten)
+                            (search-titles query)
+                            (>! result-chan)))))
           ))
     result-chan))
+
+(defn combine-results [query tag-search top-search api-search]
+  "appropriately combines results based on query and selected tags"
+  (->> (cond
+         ;;if query is "" and we have not tags selected show toplist
+         (and (empty? query) (empty? (@app :selected-tags)))
+         (@app :toplist)
+         ;;if query is just "" and we have tags, then show the tags
+         (empty? query)
+         tag-search
+         ;;else mix all the results.
+         :else (concat tag-search top-search api-search))
+       ;;make distinct and sort by greatest amount of subs
+       ;;sorty-by defaults to lowest first so negating it makes it largest
+       (utils/distinct-by :url)
+       (sort-by (fn [podcast] (- (podcast :subscribers))))
+       ))
 
 (defn query-podcasts! [query]
   "query for podcasts on the main page"
   (set-loading! query)
-  (if (= query "")
-    (do (swap! app assoc :search-result (@app :toplist))
-        (done-loading! query))
-    (go (let [result (search-titles query (@app :toplist))
-              ;;only do the request if there's not enough results in the toplist
-              search (if (< (count result) 10)
+  (go
+    ;;update tags first because its quicker
+    (search-tags! query)
+    ;;get search results from api enpoints
+    (let [top-search (search-titles query (@app :toplist))
+          ;;only do the request if there's not enough results in the toplist
+          api-search (if (< (count top-search) 10)
                        (<! (mygpo-search-memo query))
-                       nil)
-              tag-search (<! (tag-search-memo query))]
-          ;;don't show these results if we're not looking for them anymore
-          (if (= query (@app :query))
-            (do
-              (swap! app assoc
-                     :search-result
-                     (->> (if (> (count result) 10)
-                            (concat tag-search result)
-                            (concat tag-search result search))
-                          (utils/distinct-by :url)
-                          (sort-by (fn [podcast] (- (podcast :subscribers))))
-                          ))
-              (search-tags! query)
-            )))
-        (done-loading! query))))
+                       [])
+          tag-search (<! (tag-search-memo query))]
+      ;;don't show these results if we're not looking for them anymore
+      (if (= query (@app :query))
+        (swap! app assoc
+               :search-result
+               (combine-results query tag-search top-search api-search)
+               ))
+    (done-loading! query)
+    )))
 
 (defn select-tag! [tag]
-  (query-podcasts! (@app :query))
   (swap! app assoc :selected-tags
          (conj (@app :selected-tags) tag))
+  (query-podcasts! (@app :query))
   (search-tags! (@app :query)))
 
 (defn search-top-podcasts! []
@@ -201,7 +240,6 @@
   ;;toplist has a max of 100
   (go (let [toplist (<! (mygpo/toplist 100))]
         (swap! app assoc
-               :title "Top Podcasts"
                :toplist toplist
                :search-result toplist
                :query-function query-podcasts!)
@@ -230,13 +268,33 @@
   (swap! app assoc :blur? false :show-more? false :selected-podcast-rss nil))
 
 ;;subscriptions
-(defn query-subscriptions! [query]
-  )
+(defonce subscription-feed-limit (atom 20))
+(defonce subscription-feed (atom (sorted-map)))
+(defn fetch-subscription-feed! []
+  (reset! subscription-feed-limit 20)
+  (reset! subscription-feed (sorted-map))
+  (go (let [subs (<! (mygpo/get-subscriptions
+                      (@app :auth)
+                      (@app :username)))]
+        (doseq [sub subs]
+          (go (try (let [eps  (mygpo/episodes (<! (mygpo/get-podcast-rss (sub :url))))]
+                     (swap! subscription-feed into
+                            (for [ep eps]
+                              (let [date (xmlh/text (xmlh/find-first ep {:tag :pubDate}))]
+                              [(utils/rfc822-val date) (assoc ep :subscription sub)])))
+                     ) (catch :default e (print e))))))))
+(defn feed-more! []
+  (swap! subscription-feed-limit + 20))
 
-(defn search-subscriptions! []
-  (go (let [subscriptions (<! (mygpo/get-subscriptions (@app :auth) (@app :username)))]
-        (print "s")
-        ((print subscriptions) 0)
-        (print "s
-               :query-function query-subscriptions!)
+(defn show-subscriptions! []
+  (set-loading! :list)
+  (go (let [subscriptions (<! (mygpo/get-subscriptions
+                               (@app :auth)
+                               (@app :username)))]
+        (fetch-subscription-feed!)
+        (swap! app assoc
+               :query-function (fn[]) ;no searching in subscriptions
+               :subscriptions subscriptions
+               :search-result subscriptions)
+        (done-loading! :list)
         )))
