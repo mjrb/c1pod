@@ -6,7 +6,7 @@ single page search engine for gpodder.net [c1pod](http://www.c1pod.tk)
 
 a clojurescript reagent application that's searches the gpodder.net api.
 
-###Features
+### Features
 - smart sorting
   + provides the client with a familiar subscription feed that shows episodes in
     chronological order. The user knows exactly the order to watch which episodes
@@ -31,7 +31,7 @@ a clojurescript reagent application that's searches the gpodder.net api.
     a practical way to find products
 </salespitch>
 
-###Technical challenges
+### Technical challenges
 the biggest issue had to do with platform complications. gpodder.net was intended to be
 used from the python client and gpodder's own website. http basic auth causes
 XHR or fetch to go into high alert because there's ways to fuzz servers with strange
