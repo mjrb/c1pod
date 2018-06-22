@@ -12,7 +12,7 @@ a clojurescript reagent application that's searches the gpodder.net api.
     chronological order. The user knows exactly the order to watch which episodes
     to avoid falling behind, because if one podcast produces faster it shows
     up more on the feed.
-  + the sub feed secretly starts getting pulled asynchronously at login. episodes are  
+  + the sub feed secretly starts getting pulled asynchronously at login. episodes are
     also sorted in place in a list so if they open the feed near login time
     results show up quick and sort themselves before the user's eyes so they don't have to
     wait for all the episodes to pull and get sorted. the user can start looking through
@@ -39,9 +39,9 @@ requests and the last thing we want is zombie browser's attacking servers. XHR o
 would send a special preflight request to ask the server what they were allowed to do,
 but the server would ignore the OPTIONS request and say 405 method not allowed, because
 that's the behavior written in the api (only POST allowed), and the source reflects that.
-this isn't normally an issue because the most popular clients don't do the requests from  
+this isn't normally an issue because the most popular clients don't do the requests from
 the browser, they do it from a native client or a server. I started working on a fix
-by adding the correct django stuff to allow it but then i saw in api 3 they were switching 
+by adding the correct django stuff to allow it but then i saw in api 3 they were switching
 to oauth or some kind of JWT, which will resolve the issue.
 TLDR: it worked when I used curl so I decided I was going to use curl, and the easiest
 way to do that was a php script. so I wrote some simple php scripts that solve this
@@ -90,6 +90,7 @@ And open your browser in `resources/public/index.html`. You will not
 get live reloading, nor a REPL. 
 
 ## License
+this liscense applies to any program in this repository
 
 Copyright © 2018 Michael J Winters
 
